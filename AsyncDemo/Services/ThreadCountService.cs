@@ -12,8 +12,8 @@ namespace AsyncDemo.Services
 {
     public class ThreadCountService : IHostedService, IDisposable
     {
+        private readonly ILogger<ThreadCountService> _logger;
         private Timer _timer;
-        private ILogger<ThreadCountService> _logger;
         private ConcurrentQueue<(long, int)> _threadCounts;
 
         public ThreadCountService(ILogger<ThreadCountService> logger)
@@ -31,7 +31,7 @@ namespace AsyncDemo.Services
 
         private static void CountThreads(object state)
         {
-            ConcurrentQueue<(long, int)> threadCounts = (ConcurrentQueue<(long, int)>) state;
+            var threadCounts = (ConcurrentQueue<(long, int)>) state;
             var threadCount = Process.GetCurrentProcess().Threads.Count;
             threadCounts.Enqueue((DateTimeOffset.Now.ToUnixTimeSeconds(), threadCount));
         }
@@ -41,18 +41,17 @@ namespace AsyncDemo.Services
         {
             _logger.LogCritical("{}", _threadCounts.Count);
             _timer?.Change(Timeout.Infinite, 0);
-            using (var file = new StreamWriter("./thread_counts.csv"))
+            await using var file = new StreamWriter("./thread_counts.csv");
+            foreach (var timeCountPair in _threadCounts)
             {
-                foreach (var timeCountPair in _threadCounts)
-                {
-                    await file.WriteLineAsync($"{timeCountPair.Item1},{timeCountPair.Item2}");
-                }
+                await file.WriteLineAsync($"{timeCountPair.Item1},{timeCountPair.Item2}");
             }
         }
 
         public void Dispose()
         {
             _timer?.Dispose();
+            GC.SuppressFinalize(this);
         }
     }
 }
